@@ -59,6 +59,7 @@ int main(int argc, char **argv)
             break;
         case '?':
             printf("nByteProj -s | -c <server_IP> -n <numOfBytes> | -?");
+            break;
         default:
                 printf("illegal opt parsing, plz type -? for help\n");
                 exit(-1);

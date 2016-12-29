@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdbool.h>
 #include <string.h>
 #include <getopt.h>
 #include <errno.h>
@@ -44,6 +45,10 @@ int main(int argc, char **argv)
             }
             role = 'c';
             clientFlag = 1;
+            if(isIpAddr(optarg)==0){
+                printf("invalid server IP address\n");
+                exit(-1);
+            }
             serverAddr = optarg;
             break;
         case 'n':
@@ -58,7 +63,8 @@ int main(int argc, char **argv)
             nByte = atoi(optarg);
             break;
         case '?':
-            printf("nByteProj -s | -c <server_IP> -n <numOfBytes> | -?");
+            printf("nByteProj -s | -c <server_IP> -n <numOfBytes> | -?\n");
+            exit(-1);
             break;
         default:
                 printf("illegal opt parsing, plz type -? for help\n");
@@ -105,7 +111,7 @@ int doServer(){
     char data[MAX_DATA];
 
     if((sock = socket(AF_INET, SOCK_STREAM,0)) == ERROR){
-        perror("server socket: ");
+        perror("server socket");
         return -1;
     }
     printf("server socket created\n");
@@ -115,25 +121,25 @@ int doServer(){
     bzero(&server.sin_zero,8);
 
     if((bind(sock,(struct sockaddr *)&server,sockaddr_len)) == ERROR){
-        perror("bind: ");
+        perror("bind");
         return -1;
     }
     printf("socket bind\n");
     if((listen(sock,MAX_CLIENT))==ERROR){
-        perror("listen: ");
+        perror("listen");
         return -1;
     }
     printf("server listening...\n");
     while(1){
         if((target = accept(sock,(struct sockaddr *)&client, &sockaddr_len))==ERROR){
-            perror("accept: ");
+            perror("accept");
             return -1;
         }
         printf("Client connected from port no %d and IP %s\n",ntohs(client.sin_port),inet_ntoa(client.sin_addr));
         data_len = 1;
         while(data_len){
             if((data_len = recv(target,data,MAX_DATA,0))==ERROR){
-                perror("receive: ");
+                perror("receive");
                 return -1;
             };
             if(data_len){
@@ -157,12 +163,17 @@ char *getString(unsigned int n){
     return input;
 }
 
+int isIpAddr(char *ipAddress){
+    struct sockaddr_in sa;
+    return inet_pton(AF_INET,ipAddress,&(sa.sin_addr));
+}
+
 int doClient(char * servAddr, unsigned int nByte){
     struct sockaddr_in remote_server;
     int sock;
     char *traffic = NULL;
     if((sock = socket(AF_INET,SOCK_STREAM,0)) == ERROR){
-        perror("client socket:");
+        perror("client socket");
         return -1;
     }
     remote_server.sin_family = AF_INET;
@@ -171,7 +182,7 @@ int doClient(char * servAddr, unsigned int nByte){
     bzero(&remote_server.sin_zero,8);
 
     if((connect(sock,(struct sockaddr *)&remote_server,sizeof(struct sockaddr_in))) == ERROR){
-        perror("connect: ");
+        perror("connect");
         return -1;
     }
     unsigned int toBeSent = nByte;
@@ -180,7 +191,7 @@ int doClient(char * servAddr, unsigned int nByte){
         if(toBeSent<=MAX_DATA){
             traffic = getString(toBeSent);
             if((sent=send(sock, traffic, toBeSent ,0))==ERROR){
-                perror("send: ");
+                perror("send");
                 free(traffic);
                 return -1;
             }
@@ -191,7 +202,7 @@ int doClient(char * servAddr, unsigned int nByte){
         else{
             traffic = getString(MAX_DATA);
             if((sent=send(sock, traffic, MAX_DATA ,0))==ERROR){
-                perror("send: ");
+                perror("send");
                 free(traffic);
                 return -1;
             }

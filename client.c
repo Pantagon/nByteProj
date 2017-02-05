@@ -13,19 +13,30 @@
 #include <netinet/tcp.h>
 
 #define BUFFER 1024
+#define MAX_REQUEST_STRING 16
+void usage();
 
 int main(int argc, char** argv) {
     int opt;
     char* servIP = NULL;
     int port = -1;
-    int numBytes = 0;
+    long int numBytes = 0;
+    char* numBytes_string = NULL;
+    int loopflag = 0;
+
     while ((opt = getopt(argc, argv, "s:n:p:")) != -1) {
+        loopflag = 1;
         switch (opt) {
             case 's':
                 servIP = optarg;
                 break;
             case 'n':
-                numBytes = atoi(optarg);
+                numBytes_string = optarg;
+                if (strlen(numBytes_string)>8){
+                    printf("num of bytes should smaller than 100MB\n");
+                    usage();
+                }
+                numBytes = atol(optarg);                
                 break;
             case 'p':
                 port = atoi(optarg);
@@ -34,21 +45,22 @@ int main(int argc, char** argv) {
                 usage();
         }
     }
+    if(!loopflag) usage();
 
     if (servIP == NULL || validIP(servIP) == 0) {
-        perror("Invalid IP.\n");
+        printf("Invalid IP.\n");
         usage();
     }
     if (numBytes <= 0) {
-        perror("Number of bytes must be positive.\n");
+        printf("Number of bytes must be positive.\n");
         usage();
     }
     if (port < 0 || port > 65535) {
-        perror("Invalid port number.\n");
+        printf("Invalid port number.\n");
         usage();
     }
 
-    printf("Requesting server IP: %s port: %d to send %d bytes of data.\n", servIP, port, numBytes);
+    printf("Requesting server IP: %s port: %d to send %s bytes of data.\n", servIP, port, numBytes_string);
     int sockfd;
     if ((sockfd = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
         perror("Failed to initialize socket.\n");
@@ -62,10 +74,12 @@ int main(int argc, char** argv) {
         perror("Failed to connect to server.\n");
         exit(-1);
     }
-    int32_t nBytes = htonl(numBytes);
-    char* data = (char*) &nBytes;
-    int left = sizeof(nBytes);
-    ssize_t written;
+    
+    char* data = numBytes_string;
+    int left = sizeof(data);
+    printf("size of data: %d\n", left);
+    int written;
+    /*
     while (left > 0) {
         if ((written = write(sockfd, data, left)) < 0) {
             if (errno == EINTR) {
@@ -78,28 +92,48 @@ int main(int argc, char** argv) {
         left -= written;
         data += written;
     }
-    printf("Finished sending the number of bytes to the server.\n");
+    */
 
-    printf("Now ready for receiving data from the server.\n");
-    int dataLeft = numBytes;
-    int total = 0;
-    ssize_t dataLength = 0;
+        if ((written = write(sockfd, data, left)) < 0) {
+            if (errno == EINTR) {
+                written = 0;
+            } 
+            else {
+                perror("Error writing number of bytes to server.\n");
+                exit(-1);
+            }
+        }
+    printf("written value:%d\n", written);    
+
+
+    printf("Finished sending the number of bytes to the server.\n");
+    printf("Now ready for receiving data from the server...\n");
+
+    long int dataLeft = numBytes;
+    long int total = 0;
+    //ssize_t dataLength = 0;
+    int dataLength = 0;
     char buffer[BUFFER];
+           
+    
     while (dataLeft > 0) {
         if ((dataLength = read(sockfd, buffer, BUFFER)) < 0) {
+            
             if (errno == EINTR) {
                 dataLength = 0;
             } else {
                 perror("Error receiving data.\n");
                 exit(-1);
             }
-        }
+        }       
+        
+        dataLeft -= (long int)dataLength;
+        total += (long int)dataLength;
+        if((dataLength==0)&&(total>0)) break;
         printf("Received %d bytes.\n", dataLength);
-        dataLeft -= dataLength;
-        total += dataLength;
     }
-    printf("Finised receiving. Totally received: %d bytes.\n", total);
-    close(sockfd);
+    printf("Finished receiving. Totally received: %ld / %s bytes.\n", total,numBytes_string);
+
     return 0;
 }
 

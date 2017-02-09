@@ -11,26 +11,31 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <netinet/tcp.h>
-
 #include <pthread.h>
+
 #define DEFAULT_SERVER_PORT 5001
 #define MAX_CLIENT 10
-#define MAX_DATA 1024
-#define MAX_REQUEST_STRING 24
+#define MAX_TO_WRITE 1024000
+#define MAX_REQ_LEN 12
 
+#define min(a, b) ((a < b)? a : b)
+
+char traffic[MAX_TO_WRITE] = {0};
 int server_port = DEFAULT_SERVER_PORT;
 /*handle an incoming connection*/
 void* handle_connection(void* ptr);
 /*print usage*/
-void usage();
+void usage_serv();
 /*generate string with length n*/
-char* getString(long int n);
-/*
-void* testhread(void* ptr){
-	printf("testing\n");
-	return NULL;
-}
-*/
+char* getString(long long n);
+/*struct for passing parameter to thread*/
+struct parameter_serv
+{
+	struct sockaddr_in cli_addr;
+	int sockfd_ptr;
+};
+
+
 int main(int argc, char **argv)
 {
     pid_t pid, tid;
@@ -50,12 +55,12 @@ int main(int argc, char **argv)
                 server_port = atoi(optarg);
                 break;
             default:
-                usage();
+                usage_serv();
         }
     }
     if (server_port < 0 || server_port > 65535) {
         perror("invalid port number");
-        usage();
+        usage_serv();
     }
     /* initialize local server address */
     memset(&serv_addr,0,sizeof(serv_addr));
@@ -77,145 +82,91 @@ int main(int argc, char **argv)
         perror("listen");
         return -1;
     }
-	    
-    printf("Server listening on port %d\n", server_port);
+
+    printf("Server listening on port %d...\n", server_port);
 
 
     while(1){
-        sockfd_ptr = (int*)malloc(sizeof(int));
-        if(!sockfd_ptr){
+        struct parameter_serv *threadArg = (struct parameter_serv*) malloc(sizeof(struct parameter_serv));
+        if(!threadArg){
             perror("malloc");
             return -1;
         }
-        *sockfd_ptr = accept(listen_fd,(struct sockaddr *)&cli_addr, &len);
-        if(*sockfd_ptr <0){
+        if(((*threadArg).sockfd_ptr = accept(listen_fd,(struct sockaddr *)&((*threadArg).cli_addr), &len)) <0){
             close(listen_fd);
-            free(sockfd_ptr);
+            free(threadArg);
             perror("accept");
             return -1;
         }
-        printf("Client connected from port no %d and IP %s\n",ntohs(cli_addr.sin_port),inet_ntoa(cli_addr.sin_addr));
-        
-        if(pthread_create(&serv_thread, NULL, handle_connection, (void*)sockfd_ptr)<0){
+        printf("    Client connected (%s: %d) \n",inet_ntoa((*threadArg).cli_addr.sin_addr),ntohs((*threadArg).cli_addr.sin_port));
+
+        if(pthread_create(&serv_thread, NULL, handle_connection, (void*)threadArg)<0){
             close(listen_fd);
-            free(sockfd_ptr);
+            free(threadArg);
             perror("pthread");
             return -1;
-        }
-        
-        /*
-        if(pthread_create(&serv_thread, NULL, testhread, (void*)sockfd_ptr)<0){
-            close(listen_fd);
-            free(sockfd_ptr);
-            perror("pthread");
-            return -1;
-        }*/        
-        printf("Server listening on port %d\n\n\n", server_port);
+        }        
     }
 
     return 0;
 }
 
-void* handle_connection(void* ptr){
-    
-    int sockfd = *(int*)ptr;      
-    free(ptr);
-    char* buffer = (char* )malloc(100);
-    bzero(buffer,MAX_REQUEST_STRING);
-    long int nByte = 0;
+void* handle_connection(void* threadArg){
+    struct sockaddr_in cli_addr = (*(struct parameter_serv*) threadArg).cli_addr;
+    int sockfd = (*(struct parameter_serv*) threadArg).sockfd_ptr;
+    free(threadArg);
+    char buffer[MAX_REQ_LEN] = {0};
+    int next_to_wrt = 0;
+    long long nByte = 0;
 
-    int sent = 0;   
-    
+    int sent = 0;
+
     int data_len = 0;
-    
-   
-    while(1){
-    	data_len=recv(sockfd,buffer,sizeof(buffer),0);
-    	printf("data_len: %d\n",data_len);    	
-        if(data_len<0){
-            perror("read");            
-            free(buffer);
+
+
+    while(1) {
+    	data_len = recv(sockfd, buffer + next_to_wrt, MAX_REQ_LEN - next_to_wrt, 0);
+
+        if(data_len <= 0){
+            perror("read");
     		close(sockfd);
     		return NULL;
         }
-        else if(data_len>0){
-        	break;
-        }
-        
-    }    
-    printf("Client requests for %s bytes of data\n",buffer);
-    if((nByte= atol(buffer))<=0){
+
+        next_to_wrt += data_len;
+
+        if (MAX_REQ_LEN <= next_to_wrt || buffer[next_to_wrt - 1] == '\0') break;
+
+    }
+
+    printf("    Client (%s: %d) requests for %s bytes of data\n",inet_ntoa(cli_addr.sin_addr),ntohs(cli_addr.sin_port), buffer);
+    if((nByte = atoll(buffer)) <= 0){
         printf("num of byte cannot be non-positive");
-        free(buffer);
+
     	close(sockfd);
     	return NULL;
     }
 
+    long long remain_byte_to_sent = nByte;
+    while (remain_byte_to_sent > 0){
 
-	char* traffic = NULL;
-    while(nByte>0){
-    	
-        if(nByte<=MAX_DATA){
-            traffic = getString(nByte);
-            if((sent=send(sockfd, traffic, nByte ,0))==-1){
-                perror("send");
-                free(traffic);
-                free(buffer);
-			    close(sockfd);
-			    return NULL;
-            }
-            printf("Sent %d bytes\n",sent);
-            nByte -= sent;
-            
-        }
-        else{
-            traffic = getString(MAX_DATA);
-            if((sent=send(sockfd, traffic, MAX_DATA ,0))==-1){
-                perror("send");
-                free(traffic);
-                free(buffer);
-			    close(sockfd);
-			    return NULL;
-            }
-            //printf("Sent %d bytes\n",sent);
-            nByte -= sent;
-            
-        }
+        if ((sent = send(sockfd, traffic, min(remain_byte_to_sent, MAX_TO_WRITE) ,0)) == -1) {
+        	perror("send");
+			close(sockfd);
+			return NULL;
+    	}
+
+        remain_byte_to_sent -= sent;
+
     }
-    printf("finish sending\n");
-	
-    
-    free(buffer);
+
+    printf("        Finish sending for client (%s: %d)\n",inet_ntoa(cli_addr.sin_addr),ntohs(cli_addr.sin_port));
     close(sockfd);
-    
-    
+
+
     return NULL;
 }
-void usage(){
+void usage_serv(){
     printf("Usage: server -p <port>\n");
     exit(-1);
-}
-char *getString(long int n){
-    char *input = (char *)malloc(sizeof(char)*n);
-    int  i;
-    for(i=0; i<n-1;i++){
-        *(input+i) = '*';
-    }
-    *(input+n)='\0';
-    return input;
-}
-int nonblock_read(int sockfd, void* buffer, size_t len){
-    int data_len = read(sockfd,buffer,len);
-    if(data_len<0){
-        if(errno==EWOULDBLOCK){
-        	return 0;
-        } 
-        else {
-        	return -1;
-        }
-    }
-    else {    	
-    	return data_len;
-    }
-
 }

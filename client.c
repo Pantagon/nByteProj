@@ -11,19 +11,33 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <netinet/tcp.h>
+#include <sys/time.h>
 
 #define BUFFER 1024
-#define MAX_REQUEST_STRING 16
-void usage();
+#define MAX_REQ_LEN 12
+void usage_cli();
+int isValidNumber(char* input);
+int isValidPort(int port);
+int isValidIP(char* IP);
+/*
+struct parameter_cli
+{
+    struct timeval start;
+    struct timeval end;
+    long int flow_complete_time;
+    float throughput;
+
+};*/ //TODO: use struct to store args
 
 int main(int argc, char** argv) {
+
     int opt;
     char* servIP = NULL;
     int port = -1;
-    long int numBytes = 0;
+    long long numBytes = 0;
     char* numBytes_string = NULL;
     int loopflag = 0;
-
+    int sockfd;
     while ((opt = getopt(argc, argv, "s:n:p:")) != -1) {
         loopflag = 1;
         switch (opt) {
@@ -31,41 +45,27 @@ int main(int argc, char** argv) {
                 servIP = optarg;
                 break;
             case 'n':
-                numBytes_string = optarg;
-                if (strlen(numBytes_string)>8){
-                    printf("num of bytes should smaller than 100MB\n");
-                    usage();
-                }
-                numBytes = atol(optarg);                
+                numBytes_string = optarg;                               
                 break;
             case 'p':
                 port = atoi(optarg);
                 break;
             default:
-                usage();
+                usage_cli();
         }
     }
-    if(!loopflag) usage();
+    if(!loopflag) usage_cli();
 
-    if (servIP == NULL || validIP(servIP) == 0) {
-        printf("Invalid IP.\n");
-        usage();
-    }
-    if (numBytes <= 0) {
-        printf("Number of bytes must be positive.\n");
-        usage();
-    }
-    if (port < 0 || port > 65535) {
-        printf("Invalid port number.\n");
-        usage();
-    }
+    if((isValidPort(port) && isValidNumber(numBytes_string) && isValidIP(servIP)) == 0) usage_cli();
+    numBytes = atoll(numBytes_string);
 
-    printf("Requesting server IP: %s port: %d to send %s bytes of data.\n", servIP, port, numBytes_string);
-    int sockfd;
+    printf("Requesting server (%s: %d) to send %s bytes of data.\n", servIP, port, numBytes_string);
+    
     if ((sockfd = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
         perror("Failed to initialize socket.\n");
         exit(-1);
     }
+
     struct sockaddr_in servAddr;
     servAddr.sin_family = AF_INET;
     servAddr.sin_port = htons(port);
@@ -75,46 +75,37 @@ int main(int argc, char** argv) {
         exit(-1);
     }
     
+    struct timeval start;
+    struct timeval end;
+    unsigned long flow_complete_time;
+    float throughput;
+
     char* data = numBytes_string;
-    int left = sizeof(data);
-    printf("size of data: %d\n", left);
+    int req_len = strlen(numBytes_string) + 1;    
     int written;
-    /*
-    while (left > 0) {
-        if ((written = write(sockfd, data, left)) < 0) {
-            if (errno == EINTR) {
-                written = 0;
-            } else {
-                perror("Error writing number of bytes to server.\n");
-                exit(-1);
-            }
+
+    if ((written = write(sockfd, data, req_len)) < 0) {
+        if (errno == EINTR) {
+            written = 0;
+        } 
+        else {
+            perror("Error writing number of bytes to server.\n");
+            exit(-1);
         }
-        left -= written;
-        data += written;
     }
-    */
 
-        if ((written = write(sockfd, data, left)) < 0) {
-            if (errno == EINTR) {
-                written = 0;
-            } 
-            else {
-                perror("Error writing number of bytes to server.\n");
-                exit(-1);
-            }
-        }
-    printf("written value:%d\n", written);    
-
+    if(gettimeofday(&start, NULL)==-1){
+        perror("Timer\n");
+        exit(-1);
+    }
 
     printf("Finished sending the number of bytes to the server.\n");
     printf("Now ready for receiving data from the server...\n");
 
-    long int dataLeft = numBytes;
-    long int total = 0;
-    //ssize_t dataLength = 0;
+    long long dataLeft = numBytes;
+    long long total = 0;
     int dataLength = 0;
-    char buffer[BUFFER];
-           
+    char buffer[BUFFER] = {0};           
     
     while (dataLeft > 0) {
         if ((dataLength = read(sockfd, buffer, BUFFER)) < 0) {
@@ -127,22 +118,56 @@ int main(int argc, char** argv) {
             }
         }       
         
-        dataLeft -= (long int)dataLength;
-        total += (long int)dataLength;
-        if((dataLength==0)&&(total>0)) break;
-        printf("Received %d bytes.\n", dataLength);
+        dataLeft -= (long long)dataLength;
+        total += (long long)dataLength;
+        if ((dataLength == 0) && (total > 0)) break;        
     }
-    printf("Finished receiving. Totally received: %ld / %s bytes.\n", total,numBytes_string);
 
+    if(gettimeofday(&end, NULL)==-1){
+        perror("Timer\n");
+        exit(-1);
+    }
+
+    flow_complete_time = 1000000 * (end.tv_sec - start.tv_sec) + (end.tv_usec - start.tv_usec);
+    printf ("   Compute %lld B / %ld us \n", total, flow_complete_time);
+    throughput = ((float)total / ((float)flow_complete_time)) ;
+    printf ("   Finished receiving. Totally received: %lld / %s bytes.\n", total,numBytes_string);
+    printf ("   Throughput: %.3f MB/S\n", throughput);
     return 0;
 }
 
-int validIP(char* ip) {
-    struct sockaddr_in sa;
-    return inet_pton(AF_INET, ip, &(sa.sin_addr));
+
+
+void usage_cli(){
+    printf("Usage: ./client -s <servIP> -n <numBytesToRcv> -p <port>\n");
+    exit(-1);
 }
 
-void usage() {
-    printf("Usage: client -s <servIP> -n <numBytesToRcv> -p <port>\n");
-    exit(-1);
+int isValidIP(char* servIP) {
+    struct sockaddr_in sa;
+    if (servIP == NULL || inet_pton(AF_INET, servIP, &(sa.sin_addr)) == 0) {
+        printf("Invalid IP.\n");
+        return 0;
+    }
+    return 1;    
+}
+
+int isValidNumber(char* numBytes_string){
+    if (strlen(numBytes_string) > MAX_REQ_LEN){
+        printf("num of bytes should smaller than 999,999,999,999B (~1TB)\n");
+        return 0;
+    }     
+    if (atoll(numBytes_string) <= 0) {
+        printf("Number of bytes must be positive.\n");
+        return 0;
+    }
+    return 1;
+}
+
+int isValidPort(int port){
+    if (port <= 0 || port > 65535) {
+        printf("Invalid port number.\n");
+        return 0;
+    }
+    return 1;
 }

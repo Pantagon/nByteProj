@@ -26,8 +26,7 @@ int server_port = DEFAULT_SERVER_PORT;
 void* handle_connection(void* ptr);
 /*print usage*/
 void usage_serv();
-/*generate string with length n*/
-char* getString(long long n);
+
 /*struct for passing parameter to thread*/
 struct parameter_serv
 {
@@ -124,13 +123,12 @@ void* handle_connection(void* threadArg){
     int data_len = 0;
 
 
-    while(1) {
-    	data_len = recv(sockfd, buffer + next_to_wrt, MAX_REQ_LEN - next_to_wrt, 0);
+    while(1) {  	
 
-        if(data_len <= 0){
-            perror("read");
-    		close(sockfd);
-    		return NULL;
+        if((data_len = recv(sockfd, buffer + next_to_wrt, MAX_REQ_LEN - next_to_wrt, 0)) <= 0){
+			perror("read");
+			close(sockfd);
+			return NULL;
         }
 
         next_to_wrt += data_len;
@@ -155,15 +153,11 @@ void* handle_connection(void* threadArg){
 			close(sockfd);
 			return NULL;
     	}
-
         remain_byte_to_sent -= sent;
-
     }
 
     printf("        Finish sending for client (%s: %d)\n",inet_ntoa(cli_addr.sin_addr),ntohs(cli_addr.sin_port));
     close(sockfd);
-
-
     return NULL;
 }
 void usage_serv(){

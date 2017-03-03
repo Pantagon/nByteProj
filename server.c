@@ -26,24 +26,20 @@ int server_port = DEFAULT_SERVER_PORT;
 void* handle_connection(void* ptr);
 /*print usage*/
 void usage_serv();
-
 /*struct for passing parameter to thread*/
 struct parameter_serv
 {
-	struct sockaddr_in cli_addr;
-	int sockfd_ptr;
+    struct sockaddr_in cli_addr;
+    int sockfd_ptr;
 };
 
 
 int main(int argc, char **argv)
 {
-    pid_t pid, tid;
+    //pid_t pid, tid;
     pthread_t serv_thread;
     int listen_fd;
-    struct sockaddr_in serv_addr;
-    struct sockaddr_in cli_addr;
-
-    int* sockfd_ptr = NULL;
+    struct sockaddr_in serv_addr;    
     socklen_t len = sizeof(struct sockaddr_in);
 
     /*get option*/
@@ -97,7 +93,7 @@ int main(int argc, char **argv)
             perror("accept");
             return -1;
         }
-        printf("    Client connected (%s: %d) \n",inet_ntoa((*threadArg).cli_addr.sin_addr),ntohs((*threadArg).cli_addr.sin_port));
+        //printf("    Client connected (%s: %d) \n",inet_ntoa((*threadArg).cli_addr.sin_addr),ntohs((*threadArg).cli_addr.sin_port));
 
         if(pthread_create(&serv_thread, NULL, handle_connection, (void*)threadArg)<0){
             close(listen_fd);
@@ -117,18 +113,19 @@ void* handle_connection(void* threadArg){
     char buffer[MAX_REQ_LEN] = {0};
     int next_to_wrt = 0;
     long long nByte = 0;
-
     int sent = 0;
-
     int data_len = 0;
 
-
-    while(1) {  	
+    /* Server receive request from clients */
+    while(1) {      
 
         if((data_len = recv(sockfd, buffer + next_to_wrt, MAX_REQ_LEN - next_to_wrt, 0)) <= 0){
-			perror("read");
-			close(sockfd);
-			return NULL;
+            /*
+            perror("read");
+            close(sockfd);
+            return NULL;
+            */
+            continue;
         }
 
         next_to_wrt += data_len;
@@ -140,19 +137,19 @@ void* handle_connection(void* threadArg){
     printf("    Client (%s: %d) requests for %s bytes of data\n",inet_ntoa(cli_addr.sin_addr),ntohs(cli_addr.sin_port), buffer);
     if((nByte = atoll(buffer)) <= 0){
         printf("num of byte cannot be non-positive");
-
-    	close(sockfd);
-    	return NULL;
+        close(sockfd);
+        return NULL;
     }
 
+    /* Server send traffic to clients */
     long long remain_byte_to_sent = nByte;
     while (remain_byte_to_sent > 0){
 
         if ((sent = send(sockfd, traffic, min(remain_byte_to_sent, MAX_TO_WRITE) ,0)) == -1) {
-        	perror("send");
-			close(sockfd);
-			return NULL;
-    	}
+            perror("send");
+            close(sockfd);
+            return NULL;
+        }
         remain_byte_to_sent -= sent;
     }
 
@@ -161,6 +158,6 @@ void* handle_connection(void* threadArg){
     return NULL;
 }
 void usage_serv(){
-    printf("Usage: server -p <port>\n");
+    printf("Usage: ./server -p <port>\n");
     exit(-1);
 }

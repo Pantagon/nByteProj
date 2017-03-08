@@ -1,0 +1,2 @@
+server 192.168.72.131 5001
+req_size_dist conf/DCTCP_CDF.txt

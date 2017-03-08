@@ -1,23 +1,36 @@
-all: client server
+CC = gcc
+CFLAGS = -c -Wall -pthread -lm -lrt
+LDFLAGS = -pthread -lm -lrt
+TARGETS = client server
+CLIENT_OBJS = common.o cdf.o conn.o client.o
+SERVER_OBJS = common.o server.o
+BIN_DIR = bin
+RESULT_DIR = result
+CLIENT_DIR = src/client
+COMMON_DIR = src/common
+SERVER_DIR = src/server
 
-client.o: client.c cdf.h
-	gcc -c client.c cdf.h -pthread
+all: $(TARGETS) move
 
-client: client.o cdf.o conn.o
-	gcc client.o cdf.o conn.o -o client -pthread -lm -lrt
+move:
+	mkdir -p $(RESULT_DIR)
+	mkdir -p $(BIN_DIR)
+	mv *.o $(TARGETS) $(BIN_DIR)	
 
-server: server.c
-	gcc server.c -o server -pthread
+client: $(CLIENT_OBJS)
+	$(CC) $(CLIENT_OBJS) -o client $(LDFLAGS)
 
-cdf.o: cdf.c cdf.h
-	gcc -c cdf.c cdf.h
+server: $(SERVER_OBJS)
+	$(CC) $(SERVER_OBJS) -o server $(LDFLAGS)
 
-conn.o: conn.c conn.h
-	gcc -c conn.c conn.h
+%.o: $(CLIENT_DIR)/%.c
+	$(CC) $(CFLAGS) $^ -o $@
+
+%.o: $(SERVER_DIR)/%.c
+	$(CC) $(CFLAGS) $^ -o $@
+
+%.o: $(COMMON_DIR)/%.c
+	$(CC) $(CFLAGS) $^ -o $@
 
 clean:
-	rm -f *.o
-	rm -f client
-	rm -f server
-
-
+	rm -rf $(BIN_DIR)/*

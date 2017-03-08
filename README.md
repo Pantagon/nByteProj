@@ -1,4 +1,4 @@
-# Traffic Generator
+# Simple Traffic Generator
 ## Brief Introduction
 A simple traffic generator for network experiments.
 

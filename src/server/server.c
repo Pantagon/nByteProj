@@ -118,7 +118,9 @@ int main(int argc, char *argv[])
             free(sockfd_ptr);
             error("Error: accept");
         }
-        else if (pthread_create(&serv_thread, NULL, handle_connection, (void*)sockfd_ptr) < 0)
+	/*Pass fd and sockaddr to downside*/
+	//parameter:	ntohs(cli_addr.port),	inet_ntoa(cli_addr.sin_addr),	*sockfd_ptr
+        if (pthread_create(&serv_thread, NULL, handle_connection, (void*)sockfd_ptr) < 0)
         {
             close(listen_fd);
             free(sockfd_ptr);

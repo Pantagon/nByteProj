@@ -3,12 +3,32 @@
 
 #include <stdlib.h>
 #include <stdbool.h>
+#include <linux/netlink.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/socket.h>
+
+#define MAX_PAYLOAD 1024
+#define NETLINK_USER 31
+
+/* structure of control message */
+struct ctrl_msg {
+	uint32_t saddr;
+	uint32_t daddr;
+	uint16_t sport;
+	uint16_t dport;
+	uint32_t size;
+	uint32_t time_to_ddl;
+};
 
 /* structure of flow metadata */
 struct flow_metadata
 {
     unsigned int id;    /* ID */
-    unsigned int size;  /* flow size (bytes) */
+    unsigned long int size;  /* flow size (bytes) */
+	unsigned long int ddl; /*flow deadline (microsec)*/
 };
 
 /* flow meata data size */
@@ -66,5 +86,10 @@ unsigned int get_usleep_overhead(int iter_num);
 
 /* display progress */
 void display_progress(unsigned int num_finished, unsigned int num_total);
+
+/* netlink send d2tcp control message*/
+int nl_send_d2tcp_ctrl_msg(uint32_t saddr, uint16_t sport, uint32_t daddr,
+	uint16_t dport, uint32_t size_in_bytes, uint32_t microsecs_to_ddl);
+
 
 #endif

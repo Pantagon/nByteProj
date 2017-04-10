@@ -167,13 +167,13 @@ void* handle_connection(void* ptr)
             printf("Flow request: ID: %u Size: %lu bytes\n Deadline: %lu \n", flow.id, flow.size, flow.ddl);
 		size_in_bytes = flow.size;
 		microsecs_to_ddl = flow.ddl;
-        /*
+        
 	if (nl_send_d2tcp_ctrl_msg(saddr, sport, daddr, dport, size_in_bytes, microsecs_to_ddl) < 0)
 	{
             printf("socket() in nl_send_d2tcp_ctrl_msg");
 	    break;
 	}
-	*/
+	
         /* generate the flow response */
         if (!write_flow(sockfd, &flow))
         {

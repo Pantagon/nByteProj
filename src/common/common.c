@@ -50,7 +50,7 @@ unsigned int read_exact(int fd, char *buf, size_t count, size_t max_per_read, bo
         if (n <= 0)
         {
             if (n < 0)
-                printf("Error: read() in read_exact()");
+                printf("Error: read() in read_exact()\n");
             break;
         }
         else
@@ -97,7 +97,7 @@ unsigned int write_exact(int fd, char *buf, size_t count, size_t max_per_write, 
         if (n <= 0)
         {
             if (n < 0)
-                printf("Error: write() in write_exact()");
+                printf("Error: write() in write_exact()\n");
             break;
         }
         else
@@ -118,14 +118,17 @@ bool read_flow_metadata(int fd, struct flow_metadata *f)
 
     if (!f)
         return false;
+    
 
-    if (read_exact(fd, buf, TG_METADATA_SIZE, TG_METADATA_SIZE, false) != TG_METADATA_SIZE)
+    if (read_exact(fd, buf, TG_METADATA_SIZE, TG_METADATA_SIZE, false) != TG_METADATA_SIZE){
+        printf("read_exact ERROR\n");
         return false;
+    }
 
     /* extract metadata */
     memcpy(&(f->id), buf + offsetof(struct flow_metadata, id), sizeof(f->id));
     memcpy(&(f->size), buf + offsetof(struct flow_metadata, size), sizeof(f->size));
-    memcpy(&(f->ddl), buf + offsetof(struct flow_metadata, ddl), sizeof(f->ddl));	//
+	memcpy(&(f->ddl), buf + offsetof(struct flow_metadata, ddl), sizeof(f->ddl));
     return true;
 }
 
@@ -140,7 +143,7 @@ bool write_flow_req(int fd, struct flow_metadata *f)
     /* fill in metadata */
     memcpy(buf + offsetof(struct flow_metadata, id), &(f->id), sizeof(f->id));
     memcpy(buf + offsetof(struct flow_metadata, size), &(f->size), sizeof(f->size));
-    memcpy(&(f->ddl), buf + offsetof(struct flow_metadata, ddl), sizeof(f->ddl));	//
+	memcpy(buf + offsetof(struct flow_metadata, ddl), &(f->ddl), sizeof(f->ddl));
     /* write the request into the socket */
     if (write_exact(fd, buf, TG_METADATA_SIZE, TG_METADATA_SIZE, false) == TG_METADATA_SIZE)
         return true;
@@ -224,3 +227,61 @@ void display_progress(unsigned int num_finished, unsigned int num_total)
     printf("Generate %u / %u (%.1f%%) requests\r", num_finished, num_total, (num_finished * 100.0) / num_total);
     fflush(stdout);
 }
+
+
+/* netlink send d2tcp control message*/
+int nl_send_d2tcp_ctrl_msg(uint32_t saddr, uint16_t sport, uint32_t daddr,
+	uint16_t dport, uint32_t size_in_bytes, uint32_t microsecs_to_ddl) {
+
+	struct ctrl_msg request;
+	//struct ctrl_msg* echo;
+	struct sockaddr_nl src_addr, dest_addr;
+	struct nlmsghdr* nlh = NULL;
+	struct iovec iov;
+	int sock_fd;
+	struct msghdr msg;
+
+	sock_fd = socket(PF_NETLINK, SOCK_RAW, NETLINK_USER);
+	if (sock_fd < 0) {
+		return sock_fd;
+	}
+
+	memset(&src_addr, 0, sizeof(src_addr));
+	src_addr.nl_family = AF_NETLINK;
+	src_addr.nl_pid = getpid();
+	bind(sock_fd, (struct sockaddr*) &src_addr, sizeof(src_addr));
+
+	memset(&dest_addr, 0, sizeof(dest_addr));
+	dest_addr.nl_family = AF_NETLINK;
+	dest_addr.nl_pid = 0;
+	dest_addr.nl_groups = 0;
+
+	request.saddr = saddr;
+	request.sport = sport;
+	request.daddr = daddr;
+	request.dport = dport;
+	request.size = size_in_bytes;
+	request.time_to_ddl = microsecs_to_ddl;
+
+	nlh = (struct nlmsghdr*) malloc(NLMSG_SPACE(MAX_PAYLOAD));
+	memset(nlh, 0, NLMSG_SPACE(MAX_PAYLOAD));
+	nlh->nlmsg_len = NLMSG_SPACE(MAX_PAYLOAD);
+	nlh->nlmsg_pid = getpid();
+	nlh->nlmsg_flags = 0;
+	memcpy(NLMSG_DATA(nlh), &request, sizeof(request));
+
+	iov.iov_base = (void*)nlh;
+	iov.iov_len = nlh->nlmsg_len;
+	memset(&msg, 0, sizeof(msg));
+	msg.msg_name = (void*)&dest_addr;
+	msg.msg_namelen = sizeof(dest_addr);
+	msg.msg_iov = &iov;
+	msg.msg_iovlen = 1;
+
+	sendmsg(sock_fd, &msg, 0);
+	recvmsg(sock_fd, &msg, 0);
+	//printf("Check syslog for result.\n");
+	close(sock_fd);
+	return 0;
+}
+

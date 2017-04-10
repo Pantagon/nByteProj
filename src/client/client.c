@@ -560,7 +560,7 @@ void run_request(unsigned int req_id)
 
     flow.id = req_id + 1;   /* we reserve flow ID 0 for special usage */
     flow.size = req_size[req_id];
-
+    flow.ddl = (unsigned long int)1000;	////////
 
     /* cannot find available connection. Need to establish new connections. */
     if (!node)
@@ -639,7 +639,7 @@ void exit_connection(struct conn_node *node)
     struct flow_metadata flow;
     flow.id = 0;   /* a special flow ID to terminate connection */
     flow.size = 100;
-
+    flow.ddl = 1000;	//	
     if (!node)
         return;
 

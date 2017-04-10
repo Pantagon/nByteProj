@@ -10,10 +10,12 @@
 #include <sys/time.h>
 #include <sys/stat.h>
 #include <stdint.h>
-
 #include <pthread.h>
+
 #include "../common/common.h"
-#define SERVADDR ((unsigned long int) 0xc0a86501 )	// "192.168.101.1"
+#define SERVADDR1 ((unsigned long int) 0xc0a86501 )	// "192.168.101.1"
+#define SERVADDR1 ((unsigned long int) 0x0A590B91 )	// "10.89.11.145"
+
 /*Modified: no rate limiting*/
 
 int server_port = TG_SERVER_PORT;
@@ -30,33 +32,19 @@ void* handle_connection(void* ptr);
 /* get usleep overhead in microsecond (us) */
 unsigned int get_sleep_overhead(int iter_num);
 
-struct Thread_arg
-{	
-	uint32_t saddr;
-	uint32_t daddr;
-	uint16_t sport;
-	uint16_t dport;
-	int sockfd;	
-};
-
-
-
 int main(int argc, char *argv[])
 {
     pid_t pid, sid;
     int listen_fd;
     struct sockaddr_in serv_addr;   /* local server address */
     struct sockaddr_in cli_addr;    /* remote client address */
-	
-
     int sock_opt = 1;
     pthread_t serv_thread;  /* server thread */
-    int* sockfd_ptr = NULL;
+    struct Thread_arg* thread_ptr = NULL;
     socklen_t len = sizeof(struct sockaddr_in);
 
     /* read arguments */
     read_args(argc, argv);
-		
 
     /* initialize local server address */
     memset(&serv_addr, 0, sizeof(serv_addr));
@@ -120,34 +108,30 @@ int main(int argc, char *argv[])
 
 
     while (1)
-    {
-        sockfd_ptr = (int*)malloc(sizeof(int));
-        if (!sockfd_ptr)
-            error("Error: malloc");
-
-        *sockfd_ptr = accept(listen_fd, (struct sockaddr *)&cli_addr, &len);
-        if (*sockfd_ptr < 0)
+    {        
+	int sockfd;
+	if(!(thread_ptr = (struct Thread_arg*)malloc(sizeof(struct Thread_arg))))
+	    error(malloc);
+	
+        if((sockfd = accept(listen_fd, (struct sockaddr *)&cli_addr, &len)) < 0)
         {
             close(listen_fd);
-            free(sockfd_ptr);
-            error("Error: accept");
+            error("accept");
         }
-		printf("Client connected from port no %d and IP %s\n\n", ntohs(cli_addr.sin_port), inet_ntoa(cli_addr.sin_addr));
-		
-		struct Thread_arg thread_input;
-		memset(&thread_input, 0, sizeof(struct Thread_arg);
-		thread_input.daddr = cli_addr.sin_addr.s_addr;
-		thread_input.dport = ntohs(cli_addr.sin_port);
-		thread_input.saddr = SERVADDR;
-		thread_input.sport = server_port;
-		thread_input.sockfd = (*sockfd_ptr);
+	printf("Client connected from port no %d and IP %s\n\n", ntohs(cli_addr.sin_port), inet_ntoa(cli_addr.sin_addr));
 
-		void* thread_input_ptr = &thread_input;
+	
+	(*thread_ptr).sockfd = sockfd;
+	(*thread_ptr).daddr = cli_addr.sin_addr.s_addr;
+	(*thread_ptr).dport = ntohs(cli_addr.sin_port);
+	(*thread_ptr).saddr = SERVADDR;
+	(*thread_ptr).sport = server_port;
+	(*thread_ptr).sockfd = sockfd;	
 
-        if (pthread_create(&serv_thread, NULL, handle_connection, thread_input_ptr) < 0)
+        if (pthread_create(&serv_thread, NULL, handle_connection, (void*)thread_ptr) < 0)
         {
             close(listen_fd);
-            free(thread_input_ptr);
+            free(thread_ptr);
             error("Error: create pthread");
         }
     }
@@ -159,15 +143,15 @@ int main(int argc, char *argv[])
 void* handle_connection(void* ptr)
 {
     struct flow_metadata flow;
-	struct Thread_arg arguments = *(struct Thread_arg*)ptr;
-	uint32_t saddr = arguments.saddr;
-	uint32_t daddr = arguments.daddr;
-	uint16_t sport = arguments.sport;
-	uint16_t dport = arguments.dport;
-	uint32_t size_in_bytes = 0;
-	uint32_t microsecs_to_ddl = 0;
-	int sockfd = arguments.sockfd;    
-	free(ptr);
+    struct Thread_arg* arguments = (struct Thread_arg*)ptr;
+    int sockfd = (*arguments).sockfd;
+    uint32_t saddr = (*arguments).saddr;
+    uint32_t daddr = (*arguments).daddr;
+    uint16_t sport = (*arguments).sport;
+    uint16_t dport = (*arguments).dport;
+    uint32_t size_in_bytes = 0;
+    uint32_t microsecs_to_ddl = 0;    
+    free(ptr);
 
     while (1)
     {
@@ -180,17 +164,16 @@ void* handle_connection(void* ptr)
         }
 
         if (verbose_mode)
-            printf("Flow request: ID: %u Size: %lu bytes Deadline: %lu \n", flow.id, flow.size, flow.ddl);
+            printf("Flow request: ID: %u Size: %lu bytes\n Deadline: %lu \n", flow.id, flow.size, flow.ddl);
 		size_in_bytes = flow.size;
 		microsecs_to_ddl = flow.ddl;
-
-		if (nl_send_d2tcp_ctrl_msg(uint32_t saddr, uint16_t sport, uint32_t daddr, uint16_t dport, uint32_t size_in_bytes, uint32_t microsecs_to_ddl) < 0)
-		{
-			printf("socket() in nl_send_d2tcp_ctrl_msg");
-			break;
-		}
-		
-
+        /*
+	if (nl_send_d2tcp_ctrl_msg(saddr, sport, daddr, dport, size_in_bytes, microsecs_to_ddl) < 0)
+	{
+            printf("socket() in nl_send_d2tcp_ctrl_msg");
+	    break;
+	}
+	*/
         /* generate the flow response */
         if (!write_flow(sockfd, &flow))
         {

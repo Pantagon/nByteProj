@@ -14,7 +14,7 @@
 
 #include "../common/common.h"
 #define SERVADDR1 ((unsigned long int) 0xc0a86501 )	// "192.168.101.1"
-#define SERVADDR1 ((unsigned long int) 0x0A590B91 )	// "10.89.11.145"
+#define SERVADDR ((unsigned long int) 0x0A590B91 )	// "10.89.11.145"
 
 /*Modified: no rate limiting*/
 
